@@ -366,3 +366,6 @@ FodyWeavers.xsd
 
 CHECKLIST.md
 IMPLEMENTATION_PLAN.md
+
+# Local environment overrides (secrets)
+.env
