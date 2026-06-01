@@ -24,6 +24,18 @@ namespace Ambev.DeveloperEvaluation.WebApi.Middleware
             {
                 await HandleValidationExceptionAsync(context, ex);
             }
+            catch (KeyNotFoundException ex)
+            {
+                await WriteResponseAsync(context, StatusCodes.Status404NotFound, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                await WriteResponseAsync(context, StatusCodes.Status409Conflict, ex.Message);
+            }
+            catch (DomainException ex)
+            {
+                await WriteResponseAsync(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
         }
 
         private static Task HandleValidationExceptionAsync(HttpContext context, ValidationException exception)
@@ -39,12 +51,31 @@ namespace Ambev.DeveloperEvaluation.WebApi.Middleware
                     .Select(error => (ValidationErrorDetail)error)
             };
 
+            return context.Response.WriteAsync(Serialize(response));
+        }
+
+        private static Task WriteResponseAsync(HttpContext context, int statusCode, string message)
+        {
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = statusCode;
+
+            var response = new ApiResponse
+            {
+                Success = false,
+                Message = message
+            };
+
+            return context.Response.WriteAsync(Serialize(response));
+        }
+
+        private static string Serialize(ApiResponse response)
+        {
             var jsonOptions = new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
 
-            return context.Response.WriteAsync(JsonSerializer.Serialize(response, jsonOptions));
+            return JsonSerializer.Serialize(response, jsonOptions);
         }
     }
 }
