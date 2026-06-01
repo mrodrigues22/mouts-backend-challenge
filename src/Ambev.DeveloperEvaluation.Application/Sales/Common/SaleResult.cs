@@ -1,10 +1,9 @@
-using Ambev.DeveloperEvaluation.Application.Sales.Common;
-using MediatR;
+namespace Ambev.DeveloperEvaluation.Application.Sales.Common;
 
-namespace Ambev.DeveloperEvaluation.Application.Sales.CreateSale;
-
-public class CreateSaleCommand : IRequest<SaleResult>
+public class SaleResult
 {
+    public Guid Id { get; set; }
+
     public string SaleNumber { get; set; } = string.Empty;
 
     public DateTime SaleDate { get; set; }
@@ -17,11 +16,17 @@ public class CreateSaleCommand : IRequest<SaleResult>
 
     public string BranchName { get; set; } = string.Empty;
 
-    public List<CreateSaleItemCommand> Items { get; set; } = new();
+    public decimal TotalAmount { get; set; }
+
+    public bool IsCancelled { get; set; }
+
+    public List<SaleItemResult> Items { get; set; } = new();
 }
 
-public class CreateSaleItemCommand
+public class SaleItemResult
 {
+    public Guid Id { get; set; }
+
     public Guid ProductId { get; set; }
 
     public string ProductName { get; set; } = string.Empty;
@@ -29,4 +34,10 @@ public class CreateSaleItemCommand
     public int Quantity { get; set; }
 
     public decimal UnitPrice { get; set; }
+
+    public decimal Discount { get; set; }
+
+    public decimal TotalAmount { get; set; }
+
+    public bool IsCancelled { get; set; }
 }
