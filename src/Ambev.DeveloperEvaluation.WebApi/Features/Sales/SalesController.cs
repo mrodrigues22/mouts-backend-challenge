@@ -10,6 +10,7 @@ using Ambev.DeveloperEvaluation.WebApi.Features.Sales.Common;
 using Ambev.DeveloperEvaluation.WebApi.Features.Sales.CreateSale;
 using Ambev.DeveloperEvaluation.WebApi.Features.Sales.UpdateSale;
 using AutoMapper;
+using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
@@ -37,7 +38,7 @@ public class SalesController : BaseController
         var validationResult = await validator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
-            return BadRequest(validationResult.Errors);
+            throw new ValidationException(validationResult.Errors);
 
         var command = _mapper.Map<CreateSaleCommand>(request);
         var result = await _mediator.Send(command, cancellationToken);
@@ -68,7 +69,14 @@ public class SalesController : BaseController
         [FromQuery(Name = "_order")] string? order = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _mediator.Send(new ListSalesCommand { Page = page, Size = size, Order = order }, cancellationToken);
+        var reserved = new HashSet<string> { "_page", "_size", "_order" };
+        var filters = Request.Query
+            .Where(q => !reserved.Contains(q.Key))
+            .ToDictionary(q => q.Key, q => q.Value.ToString());
+
+        var result = await _mediator.Send(
+            new ListSalesCommand { Page = page, Size = size, Order = order, Filters = filters },
+            cancellationToken);
 
         var responses = _mapper.Map<List<SaleResponse>>(result.Sales);
         var paginated = new PaginatedList<SaleResponse>(responses, result.TotalCount, result.Page, result.Size);
@@ -86,7 +94,7 @@ public class SalesController : BaseController
         var validationResult = await validator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
-            return BadRequest(validationResult.Errors);
+            throw new ValidationException(validationResult.Errors);
 
         var command = _mapper.Map<UpdateSaleCommand>(request);
         command.Id = id;

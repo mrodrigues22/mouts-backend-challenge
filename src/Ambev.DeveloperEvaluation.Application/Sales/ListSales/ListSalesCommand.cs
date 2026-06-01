@@ -9,4 +9,6 @@ public class ListSalesCommand : IRequest<ListSalesResult>
     public int Size { get; set; } = 10;
 
     public string? Order { get; set; }
+
+    public IReadOnlyDictionary<string, string>? Filters { get; set; }
 }

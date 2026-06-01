@@ -21,7 +21,7 @@ public class ListSalesHandler : IRequestHandler<ListSalesCommand, ListSalesResul
         var page = request.Page < 1 ? 1 : request.Page;
         var size = request.Size < 1 ? 10 : request.Size;
 
-        var (sales, totalCount) = await _saleRepository.GetPagedAsync(page, size, request.Order, cancellationToken);
+        var (sales, totalCount) = await _saleRepository.GetPagedAsync(page, size, request.Order, request.Filters, cancellationToken);
 
         return new ListSalesResult
         {

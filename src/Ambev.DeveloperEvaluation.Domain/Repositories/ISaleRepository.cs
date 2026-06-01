@@ -14,6 +14,7 @@ public interface ISaleRepository
         int page,
         int size,
         string? order = null,
+        IReadOnlyDictionary<string, string>? filters = null,
         CancellationToken cancellationToken = default);
 
     Task<Sale> UpdateAsync(Sale sale, CancellationToken cancellationToken = default);

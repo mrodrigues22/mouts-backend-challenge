@@ -27,7 +27,7 @@ public class ListSalesHandlerTests
     public async Task Handle_ReturnsPaginatedResult()
     {
         IReadOnlyList<Sale> sales = new List<Sale> { new() { Id = Guid.NewGuid() } };
-        _saleRepository.GetPagedAsync(2, 5, "saleDate desc", Arg.Any<CancellationToken>())
+        _saleRepository.GetPagedAsync(2, 5, "saleDate desc", Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
             .Returns((sales, 11));
 
         var result = await _handler.Handle(new ListSalesCommand { Page = 2, Size = 5, Order = "saleDate desc" }, CancellationToken.None);
@@ -41,11 +41,11 @@ public class ListSalesHandlerTests
     public async Task Handle_NormalizesInvalidPaging()
     {
         IReadOnlyList<Sale> sales = new List<Sale>();
-        _saleRepository.GetPagedAsync(1, 10, Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _saleRepository.GetPagedAsync(1, 10, Arg.Any<string?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
             .Returns((sales, 0));
 
         await _handler.Handle(new ListSalesCommand { Page = 0, Size = -3 }, CancellationToken.None);
 
-        await _saleRepository.Received(1).GetPagedAsync(1, 10, Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        await _saleRepository.Received(1).GetPagedAsync(1, 10, Arg.Any<string?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
     }
 }

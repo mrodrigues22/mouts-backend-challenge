@@ -1,4 +1,3 @@
-﻿using Ambev.DeveloperEvaluation.Common.Validation;
 using Ambev.DeveloperEvaluation.WebApi.Common;
 using FluentValidation;
 using System.Text.Json;
@@ -8,10 +7,12 @@ namespace Ambev.DeveloperEvaluation.WebApi.Middleware
     public class ValidationExceptionMiddleware
     {
         private readonly RequestDelegate _next;
+        private readonly ILogger<ValidationExceptionMiddleware> _logger;
 
-        public ValidationExceptionMiddleware(RequestDelegate next)
+        public ValidationExceptionMiddleware(RequestDelegate next, ILogger<ValidationExceptionMiddleware> logger)
         {
             _next = next;
+            _logger = logger;
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -22,60 +23,46 @@ namespace Ambev.DeveloperEvaluation.WebApi.Middleware
             }
             catch (ValidationException ex)
             {
-                await HandleValidationExceptionAsync(context, ex);
+                var detail = string.Join(" ", ex.Errors.Select(e => e.ErrorMessage));
+                await WriteResponseAsync(context, StatusCodes.Status400BadRequest, "ValidationError", "Invalid input data", detail);
             }
             catch (KeyNotFoundException ex)
             {
-                await WriteResponseAsync(context, StatusCodes.Status404NotFound, ex.Message);
+                await WriteResponseAsync(context, StatusCodes.Status404NotFound, "ResourceNotFound", "Resource not found", ex.Message);
             }
             catch (InvalidOperationException ex)
             {
-                await WriteResponseAsync(context, StatusCodes.Status409Conflict, ex.Message);
+                await WriteResponseAsync(context, StatusCodes.Status409Conflict, "ConflictError", "Operation conflict", ex.Message);
             }
             catch (DomainException ex)
             {
-                await WriteResponseAsync(context, StatusCodes.Status400BadRequest, ex.Message);
+                await WriteResponseAsync(context, StatusCodes.Status400BadRequest, "DomainError", "Business rule violation", ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled exception processing {Method} {Path}", context.Request.Method, context.Request.Path);
+                await WriteResponseAsync(context, StatusCodes.Status500InternalServerError, "InternalServerError", "An unexpected error occurred", "Please try again later.");
             }
         }
 
-        private static Task HandleValidationExceptionAsync(HttpContext context, ValidationException exception)
-        {
-            context.Response.ContentType = "application/json";
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-
-            var response = new ApiResponse
-            {
-                Success = false,
-                Message = "Validation Failed",
-                Errors = exception.Errors
-                    .Select(error => (ValidationErrorDetail)error)
-            };
-
-            return context.Response.WriteAsync(Serialize(response));
-        }
-
-        private static Task WriteResponseAsync(HttpContext context, int statusCode, string message)
+        private static Task WriteResponseAsync(HttpContext context, int statusCode, string type, string error, string detail)
         {
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = statusCode;
 
-            var response = new ApiResponse
+            var response = new ErrorResponse
             {
-                Success = false,
-                Message = message
+                Type = type,
+                Error = error,
+                Detail = detail
             };
 
-            return context.Response.WriteAsync(Serialize(response));
-        }
-
-        private static string Serialize(ApiResponse response)
-        {
             var jsonOptions = new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
 
-            return JsonSerializer.Serialize(response, jsonOptions);
+            return context.Response.WriteAsync(JsonSerializer.Serialize(response, jsonOptions));
         }
     }
 }

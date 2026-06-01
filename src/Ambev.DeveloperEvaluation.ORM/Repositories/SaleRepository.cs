@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ambev.DeveloperEvaluation.Domain.Entities;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -38,11 +39,14 @@ public class SaleRepository : ISaleRepository
         int page,
         int size,
         string? order = null,
+        IReadOnlyDictionary<string, string>? filters = null,
         CancellationToken cancellationToken = default)
     {
         var query = _context.Sales
             .Include(s => s.Items)
             .AsNoTracking();
+
+        query = ApplyFilters(query, filters);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
@@ -54,6 +58,91 @@ public class SaleRepository : ISaleRepository
             .ToListAsync(cancellationToken);
 
         return (sales, totalCount);
+    }
+
+    private static IQueryable<Sale> ApplyFilters(IQueryable<Sale> query, IReadOnlyDictionary<string, string>? filters)
+    {
+        if (filters == null)
+            return query;
+
+        foreach (var (rawKey, value) in filters)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+
+            var key = rawKey.ToLowerInvariant();
+
+            if (key.StartsWith("_min") || key.StartsWith("_max"))
+            {
+                query = ApplyRangeFilter(query, key, value);
+                continue;
+            }
+
+            query = key switch
+            {
+                "salenumber" => ApplyStringFilter(query, value, s => s.SaleNumber),
+                "customername" => ApplyStringFilter(query, value, s => s.CustomerName),
+                "branchname" => ApplyStringFilter(query, value, s => s.BranchName),
+                "customerid" when Guid.TryParse(value, out var cid) => query.Where(s => s.CustomerId == cid),
+                "branchid" when Guid.TryParse(value, out var bid) => query.Where(s => s.BranchId == bid),
+                "iscancelled" when bool.TryParse(value, out var cancelled) => query.Where(s => s.IsCancelled == cancelled),
+                _ => query
+            };
+        }
+
+        return query;
+    }
+
+    private static IQueryable<Sale> ApplyRangeFilter(IQueryable<Sale> query, string key, string value)
+    {
+        var isMin = key.StartsWith("_min");
+        var field = key[4..];
+
+        switch (field)
+        {
+            case "saledate" when DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed):
+                var date = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+                return isMin ? query.Where(s => s.SaleDate >= date) : query.Where(s => s.SaleDate <= date);
+            case "totalamount" when decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount):
+                return isMin ? query.Where(s => s.TotalAmount >= amount) : query.Where(s => s.TotalAmount <= amount);
+            default:
+                return query;
+        }
+    }
+
+    private static IQueryable<Sale> ApplyStringFilter(
+        IQueryable<Sale> query,
+        string value,
+        System.Linq.Expressions.Expression<Func<Sale, string>> selector)
+    {
+        var startsWildcard = value.StartsWith('*');
+        var endsWildcard = value.EndsWith('*');
+        var term = value.Trim('*');
+
+        if (!startsWildcard && !endsWildcard)
+            return query.Where(BuildEquals(selector, term));
+
+        var pattern = (startsWildcard ? "%" : string.Empty) + term + (endsWildcard ? "%" : string.Empty);
+        return query.Where(BuildLike(selector, pattern));
+    }
+
+    private static System.Linq.Expressions.Expression<Func<Sale, bool>> BuildEquals(
+        System.Linq.Expressions.Expression<Func<Sale, string>> selector, string term)
+    {
+        var body = System.Linq.Expressions.Expression.Equal(selector.Body, System.Linq.Expressions.Expression.Constant(term));
+        return System.Linq.Expressions.Expression.Lambda<Func<Sale, bool>>(body, selector.Parameters);
+    }
+
+    private static System.Linq.Expressions.Expression<Func<Sale, bool>> BuildLike(
+        System.Linq.Expressions.Expression<Func<Sale, string>> selector, string pattern)
+    {
+        var efFunctions = System.Linq.Expressions.Expression.Constant(EF.Functions);
+        var ilike = typeof(NpgsqlDbFunctionsExtensions).GetMethod(
+            nameof(NpgsqlDbFunctionsExtensions.ILike),
+            new[] { typeof(DbFunctions), typeof(string), typeof(string) })!;
+        var call = System.Linq.Expressions.Expression.Call(ilike, efFunctions, selector.Body,
+            System.Linq.Expressions.Expression.Constant(pattern));
+        return System.Linq.Expressions.Expression.Lambda<Func<Sale, bool>>(call, selector.Parameters);
     }
 
     public async Task<Sale> UpdateAsync(Sale sale, CancellationToken cancellationToken = default)
